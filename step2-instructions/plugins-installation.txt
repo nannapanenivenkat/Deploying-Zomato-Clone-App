@@ -1,0 +1,227 @@
+
+1. Install Plugins like JDK, Sonarqube Scanner, NodeJs, OWASP Dependency Check
+
+Goto Manage Jenkins →Plugins → Available Plugins →
+
+Install below plugins
+
+ → Eclipse Temurin Installer (Install without restart)
+
+ → SonarQube Scanner (Install without restart)
+
+ → NodeJs Plugin (Install Without restart)
+
+
+
+
+2. Configure Java and Nodejs in Global Tool Configuration
+
+Goto Manage Jenkins → Tools → Install JDK(17) and NodeJs(16)→ Click on Apply and Save
+
+Name : jdk17
+Install automatically
+install from adoptium.net
+version : jdk 17.0.8.1+1
+
+Name : node16
+Install automatically
+install from nodejs.org
+version : nodejs 16.2.0
+
+############################################
+
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+
+############################################
+
+
+3. Configure Sonar Server in Manage Jenkins
+
+#create token:
+Grab the Public IP Address of your EC2 Instance, Sonarqube works on Port 9000, so <Public IP>:9000. 
+Goto your Sonarqube Server. Click on Administration → Security → Users → Click on Tokens and Update Token → Give it a name → Generate Token → update Token → Create a token with a name and generate → copy
+
+#Add token to credientals:
+Goto Jenkins Dashboard → Manage Jenkins → Credentials → Add Secret Text.
+kind : secret Text
+Scope : Global
+ID : sonar_token
+description : sonar_token
+Secret : Use generated token from SonarQube dashboard.
+
+Now, go to Dashboard → Manage Jenkins → System and Add like the below image.
+sonarqube installations
+name : sonar-server
+SonarQube server URL : http://<public ip>:9000
+Server authentication token : use the "sonar_token" which you have added before.
+Click on Apply and Save
+
+The Configure System option is used in Jenkins to configure different server
+Global Tool Configuration is used to configure different tools that we install using Plugins
+
+
+
+4. We will install a sonar scanner in the tools.
+Goto Manage Jenkins → Tools → sonar-scanner→ Click on Apply and Save
+
+Name : sonar-scanner
+Install automatically
+install from maven central
+version : 5.0.1.3006
+
+5. in sonarqube create quality gate also
+Administration → Configuration →Webhooks →Click on Create
+Name : jenkins
+url : <http://jenkins-public-ip:8080>/sonarqube-webhook/
+
+#############################################################################
+
+pipeline{
+    agent any
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+    stages {
+        stage('clean workspace'){
+            steps{
+                cleanWs()
+            }
+        }
+This stage cleans the workspace before starting the build process.
+
+        stage('Checkout from Git'){
+            steps{
+                git branch: 'main', url: 'https://github.com/nannapanenivenkat/Amazon_App_Deployment.git'
+            }
+        }
+This stage checks out the code from the specified GitHub repository (https://github.com/nannapanenivenkat/Amazon_App_Deployment.git) and the 'main' branch.
+
+        stage("Sonarqube Analysis "){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Amazon \
+                    -Dsonar.projectKey=Amazon '''
+                }
+            }
+        }
+Static Code Analysis: SonarQube performs static code analysis, examining the source code without executing it. 
+It checks for a variety of issues such as code duplications, coding standards violations, security vulnerabilities, and potential bugs.
+
+        stage("quality gate"){
+           steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
+                }
+            } 
+        }
+This stage waits for the SonarQube Quality Gate to be processed. The waitForQualityGate function is used, and the pipeline won't be aborted even if the Quality Gate fails (abortPipeline: false). 
+It uses the credentials with the ID 'Sonar-token' for authentication.
+
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+    }
+}
+This stage installs Node.js dependencies using the npm install command.
+
+############################################################################
+
+
+6. Install OWASP Dependency Check Plugins
+GotoDashboard → Manage Jenkins → Plugins → OWASP Dependency-Check.
+
+First, we configured the Plugin and next, we had to configure the Tool
+
+Goto Dashboard → Manage Jenkins → Tools →Dependency-check installations
+Name : DP-Check
+install automatically
+install from github.com
+version : 6.5.1
+
+#############################################################################
+
+stage('OWASP FS SCAN') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        stage('TRIVY FS SCAN') {
+            steps {
+                sh "trivy fs . > trivyfs.txt"
+            }
+        }
+This stage uses the Trivy tool to perform a filesystem scan on your project.
+The sh step is used to execute a shell command, which runs Trivy with the command trivy fs . > trivyfs.txt. This command scans the filesystem and outputs the results to a file named trivyfs.txt.
+
+#############################################################################
+
+7. Docker Image Build and Push
+We need to install the Docker tool in our system, 
+Goto Dashboard → Manage Plugins → Available plugins → Search for Docker and install these plugins
+Docker
+Docker Commons
+Docker Pipeline
+Docker API
+docker-build-step
+
+Now, goto Dashboard → Manage Jenkins → Tools →
+name : docker
+install automatically
+install from docker.com
+version : latest
+
+Add DockerHub Username and Password under Global Credentials
+kind : username and Password
+scope : Global
+username : docker hub username
+password : dockerhub password
+id : docker
+description: docker
+
+##############################################################################
+
+stage("Docker Build & Push"){
+            steps{
+                script{
+                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){   
+                       sh "docker build -t amazon ."
+                       sh "docker tag amazon venkatnannapaneni/amazon:latest "
+                       sh "docker push venkatnannapaneni/amazon:latest "
+                    }
+                }
+            }
+        }
+        stage("TRIVY"){
+            steps{
+                sh "trivy image venkatnannapaneni/amazon:latest > trivyimage.txt" 
+            }
+        }
+
+################################################################################
+
+stage('Deploy to container'){
+            steps{
+                sh 'docker run -d --name amazon -p 3000:3000 venkatnannapaneni/amazon:latest'
+            }
+        }
+
+This stage is responsible for building a Docker image and pushing it to a Docker registry.
+It uses the withDockerRegistry block to specify Docker registry credentials (credentialsId: 'docker') and the Docker tool (toolName: 'docker').
+Inside the block, the following steps are executed:
+docker build -t amazon .: Builds a Docker image with the tag 'amazon' using the current directory as the build context.
+docker tag amazon sevenajay/amazon:latest: Tags the built image with the repository and tag 'sevenajay/amazon:latest.'
+docker push sevenajay/amazon:latest: Pushes the tagged image to the Docker registry.
+Trivy Image Scan:
+
+This stage performs a security scan on the Docker image pushed to the registry using Trivy.
+The sh step is used to execute a shell command: trivy image sevenajay/amazon:latest > trivyimage.txt. This command scans the Docker image and outputs the results to a file named trivyimage.txt.
