@@ -98,16 +98,16 @@ This stage cleans the workspace before starting the build process.
 
         stage('Checkout from Git'){
             steps{
-                git branch: 'main', url: 'https://github.com/nannapanenivenkat/Amazon_App_Deployment.git'
+                git branch: 'main', url: 'https://github.com/nannapanenivenkat/Deploying-Zomato-Clone-App.git'
             }
         }
-This stage checks out the code from the specified GitHub repository (https://github.com/nannapanenivenkat/Amazon_App_Deployment.git) and the 'main' branch.
+This stage checks out the code from the specified GitHub repository (https://github.com/nannapanenivenkat/Deploying-Zomato-Clone-App.git) and the 'main' branch.
 
         stage("Sonarqube Analysis "){
             steps{
                 withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Amazon \
-                    -Dsonar.projectKey=Amazon '''
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \
+                    -Dsonar.projectKey=zomato '''
                 }
             }
         }
@@ -190,20 +190,20 @@ description: docker
 
 ##############################################################################
 
-stage("Docker Build & Push"){
+        stage("Docker Build & Push"){
             steps{
                 script{
                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){   
-                       sh "docker build -t amazon ."
-                       sh "docker tag amazon venkatnannapaneni/amazon:latest "
-                       sh "docker push venkatnannapaneni/amazon:latest "
+                       sh "docker build -t zomato ."
+                       sh "docker tag zomato venkatnannapaneni/zomato:latest "
+                       sh "docker push venkatnannapaneni/zomato:latest "
                     }
                 }
             }
         }
         stage("TRIVY"){
             steps{
-                sh "trivy image venkatnannapaneni/amazon:latest > trivyimage.txt" 
+                sh "trivy image venkatnannapaneni/zomato:latest > trivy.txt" 
             }
         }
 
@@ -211,7 +211,7 @@ stage("Docker Build & Push"){
 
 stage('Deploy to container'){
             steps{
-                sh 'docker run -d --name amazon -p 3000:3000 venkatnannapaneni/amazon:latest'
+                sh 'docker run -d --name zomato -p 3000:3000 venkatnannapaneni/zomato:latest'
             }
         }
 

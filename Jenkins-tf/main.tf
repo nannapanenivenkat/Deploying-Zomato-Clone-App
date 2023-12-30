@@ -1,14 +1,14 @@
-resource "aws_vpc" "main" {
+resource "aws_vpc" "zomato" {
   cidr_block       = "10.0.0.0/16"
   instance_tenancy = "default"
 
   tags = {
-    Name = "main"
+    Name = "zomato"
   }
 }
 
 resource "aws_subnet" "main" {
-  vpc_id     = aws_vpc.main.id
+  vpc_id     = aws_vpc.zomato.id
   cidr_block = "10.0.1.0/24"
   availability_zone = "us-east-1a"
   map_public_ip_on_launch = "true"
@@ -19,7 +19,7 @@ resource "aws_subnet" "main" {
 }
 
 resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.zomato.id
 
   tags = {
     Name = "main"
@@ -27,7 +27,7 @@ resource "aws_internet_gateway" "gw" {
 }
 
 resource "aws_default_route_table" "example" {
-  default_route_table_id = aws_vpc.main.default_route_table_id
+  default_route_table_id = aws_vpc.zomato.default_route_table_id
 
   route {
     cidr_block = "0.0.0.0/0"
@@ -45,7 +45,7 @@ resource "aws_route_table_association" "a" {
 }
 
 resource "aws_default_security_group" "default_sg" {
-  vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.zomato.id
 
   ingress = [
     for port in [22, 80, 443, 8080, 9000, 3000] : {
@@ -73,7 +73,7 @@ resource "aws_default_security_group" "default_sg" {
   }
 }
 
-resource "aws_instance" "web" {
+resource "aws_instance" "zomato_web" {
   ami                    = "ami-0c7217cdde317cfec"   #change ami id for different region
   instance_type          = "t2.large"
   key_name               = "mynewkey"
